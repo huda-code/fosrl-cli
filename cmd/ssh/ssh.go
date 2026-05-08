@@ -16,8 +16,7 @@ import (
 var (
 	errHostnameRequired       = errors.New("API did not return a hostname for the connection")
 	errResourceIDRequired     = errors.New("Resource (alias or identifier) is required; example: pangolin ssh my-server.internal")
-	errNoClientRunning        = errors.New("No client is currently running. Start the client first with `pangolin up`")
-	errNoClientRunningWindows = errors.New("No client is currently running. Start the client first in the system tray")
+	errNoClientRunning        = errors.New("No client is currently running. Start the client first.")
 )
 
 func SSHCmd() *cobra.Command {
