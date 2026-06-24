@@ -155,29 +155,7 @@ func (c *Client) request(method, endpoint string, payload interface{}, result in
 
 	// Check if the response indicates an error (based on error/success fields)
 	if apiResp.Error.Bool() || !apiResp.Success {
-		errorResp := ErrorResponse{
-			Message: apiResp.Message,
-			Status:  apiResp.Status,
-			Stack:   apiResp.Stack,
-		}
-		// Use HTTP status code if status field is not set
-		if errorResp.Status == 0 {
-			errorResp.Status = resp.StatusCode
-		}
-		// If message is empty, try to provide a default based on status code
-		if errorResp.Message == "" {
-			switch errorResp.Status {
-			case 401, 403:
-				errorResp.Message = "Unauthorized"
-			case 404:
-				errorResp.Message = "Not found"
-			case 500:
-				errorResp.Message = "Internal server error"
-			default:
-				errorResp.Message = "An error occurred"
-			}
-		}
-		return &errorResp
+		return createErrorResponse(&apiResp, resp.StatusCode, getDefaultErrorMessage)
 	}
 
 	// Parse successful response
@@ -576,28 +554,42 @@ func createErrorResponse(apiResp *APIResponse, httpStatusCode int, getDefaultMes
 		errorResp.Status = httpStatusCode
 	}
 
-	if errorResp.Message == "" && getDefaultMessage != nil {
-		errorResp.Message = getDefaultMessage(errorResp.Status)
+	if getDefaultMessage != nil {
+		if errorResp.Message == "" {
+			errorResp.Message = getDefaultMessage(errorResp.Status)
+		} else if (errorResp.Status == 401 || errorResp.Status == 403) && isGenericAuthMessage(errorResp.Message) {
+			errorResp.Message = getDefaultMessage(errorResp.Status)
+		}
 	}
 
 	return &errorResp
+}
+
+func isGenericAuthMessage(msg string) bool {
+	msg = strings.TrimSpace(msg)
+	for _, generic := range []string{"Unauthorized", "Forbidden", "Unauthenticated"} {
+		if strings.EqualFold(msg, generic) {
+			return true
+		}
+	}
+	return false
 }
 
 // getDefaultErrorMessage returns a default error message based on status code
 func getDefaultErrorMessage(statusCode int) string {
 	switch statusCode {
 	case 400:
-		return "Bad request"
+		return "Bad request. Try again later."
 	case 401, 403:
-		return "Unauthorized"
+		return "Unauthorized. Try logging in again."
 	case 404:
-		return "Not found"
+		return "Not found. Try again later."
 	case 429:
-		return "Rate limit exceeded"
+		return "Rate limit exceeded. Try again later."
 	case 500:
-		return "Internal server error"
+		return "Internal server error. Try again later."
 	default:
-		return "An error occurred"
+		return "An error occurred. Try again later."
 	}
 }
 
@@ -870,4 +862,3 @@ func (c *Client) ApplyBlueprint(orgID string, name string, blueprint string) (*A
 	}
 	return &response, nil
 }
-
