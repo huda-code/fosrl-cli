@@ -13,7 +13,7 @@ NC='\033[0m' # No Color
 
 # GitHub repository info
 REPO="fosrl/cli"
-GITHUB_API_URL="https://api.github.com/repos/${REPO}/releases/latest"
+VERSIONS_API_URL="https://api.fossorial.io/api/v1/versions"
 
 # Output helpers
 print_status() {
@@ -28,13 +28,13 @@ print_error() {
     printf '%b[ERROR]%b %s\n' "${RED}" "${NC}" "$1"
 }
 
-# Fetch latest version from GitHub API
+# Fetch latest CLI version from Fossorial versions API
 get_latest_version() {
     latest_info=""
     if command -v curl >/dev/null 2>&1; then
-        latest_info=$(curl -fsSL "$GITHUB_API_URL" 2>/dev/null)
+        latest_info=$(curl -fsSL "$VERSIONS_API_URL" 2>/dev/null)
     elif command -v wget >/dev/null 2>&1; then
-        latest_info=$(wget -qO- "$GITHUB_API_URL" 2>/dev/null)
+        latest_info=$(wget -qO- "$VERSIONS_API_URL" 2>/dev/null)
     else
         print_error "Neither curl nor wget is available."
         exit 1
@@ -45,9 +45,10 @@ get_latest_version() {
         exit 1
     fi
 
-    version=$(printf '%s' "$latest_info" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+    # Extract data.cli.latestVersion from the API response without requiring jq.
+    version=$(printf '%s' "$latest_info" | tr -d '\n\r' | sed -n 's/.*"cli"[[:space:]]*:[[:space:]]*{[^}]*"latestVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
     if [ -z "$version" ]; then
-        print_error "Could not parse version from GitHub API response"
+        print_error "Could not parse cli.latestVersion from versions API response"
         exit 1
     fi
 

@@ -95,6 +95,8 @@ func RootCommand(initResources bool) (*cobra.Command, error) {
 		return nil, err
 	}
 
+	logger.InitLogger(cfg.LogLevel)
+
 	accountStore, err := config.LoadAccountStore()
 	if err != nil {
 		return nil, err
@@ -129,10 +131,10 @@ func RootCommand(initResources bool) (*cobra.Command, error) {
 func mainCommandPreRun(cmd *cobra.Command, args []string) error {
 	cfg := config.ConfigFromContext(cmd.Context())
 
-	// Skip init/update check for version and update commands
-	// Check both the command name and if it's one of these specific commands
+	// Skip update checks when running self-update.
 	cmdName := cmd.Name()
-	if cmdName == "version" || cmdName == "update" {
+	if cmdName == "update" {
+		logger.Debug("Skipping update check for %q command", cmdName)
 		return nil
 	}
 
@@ -140,11 +142,14 @@ func mainCommandPreRun(cmd *cobra.Command, args []string) error {
 
 	// Check for updates asynchronously
 	if !cfg.DisableUpdateCheck {
+		logger.Debug("Starting update check for %q command", cmdName)
 		versionpkg.CheckForUpdateAsync(func(release *versionpkg.GitHubRelease) {
 			logger.Warning("A new version is available: %s (current: %s)", release.TagName, versionpkg.Version)
 			logger.Info("Run 'pangolin update' to update to the latest version")
 			fmt.Println()
 		})
+	} else {
+		logger.Debug("Update check disabled by configuration")
 	}
 
 	return nil
