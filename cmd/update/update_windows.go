@@ -15,11 +15,12 @@ import (
 	"time"
 
 	"github.com/fosrl/cli/internal/logger"
-	"github.com/fosrl/cli/internal/version"
 	"github.com/spf13/cobra"
 )
 
 const windowsInstallerAssetName = "pangolin-cli_windows_installer.msi"
+const githubAPIBaseURL = "https://api.github.com"
+const versionsAPIURL = "https://api.fossorial.io/api/v1/versions"
 
 var windowsUpdateRepo = "fosrl/cli"
 
@@ -32,6 +33,15 @@ type githubReleaseResponse struct {
 	TagName string               `json:"tag_name"`
 	HTMLURL string               `json:"html_url"`
 	Assets  []githubReleaseAsset `json:"assets"`
+}
+
+type versionsAPIResponse struct {
+	Data struct {
+		CLI struct {
+			LatestVersion string `json:"latestVersion"`
+		} `json:"cli"`
+	} `json:"data"`
+	Success bool `json:"success"`
 }
 
 func UpdateCmd() *cobra.Command {
@@ -118,7 +128,53 @@ func getLatestRelease(repo string) (*githubReleaseResponse, error) {
 		return nil, fmt.Errorf("invalid repo %q, expected owner/name", repo)
 	}
 
-	url := fmt.Sprintf("%s/repos/%s/%s/releases/latest", version.GitHubAPIBaseURL, repoParts[0], repoParts[1])
+	latestVersion, err := getLatestCLIVersion()
+	if err != nil {
+		return nil, err
+	}
+
+	return getReleaseByTag(repoParts[0], repoParts[1], latestVersion)
+}
+
+func getLatestCLIVersion() (string, error) {
+	req, err := http.NewRequest(http.MethodGet, versionsAPIURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create versions API request: %w", err)
+	}
+
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "pangolin-cli-update")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to query versions API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("versions API returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var versionsResp versionsAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&versionsResp); err != nil {
+		return "", fmt.Errorf("failed to decode versions response: %w", err)
+	}
+
+	if !versionsResp.Success {
+		return "", fmt.Errorf("versions API returned unsuccessful response")
+	}
+
+	if versionsResp.Data.CLI.LatestVersion == "" {
+		return "", fmt.Errorf("versions API response missing data.cli.latestVersion")
+	}
+
+	return versionsResp.Data.CLI.LatestVersion, nil
+}
+
+func getReleaseByTag(owner, name, tag string) (*githubReleaseResponse, error) {
+	url := fmt.Sprintf("%s/repos/%s/%s/releases/tags/%s", githubAPIBaseURL, owner, name, tag)
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -131,13 +187,13 @@ func getLatestRelease(repo string) (*githubReleaseResponse, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query GitHub releases: %w", err)
+		return nil, fmt.Errorf("failed to query GitHub release by tag %q: %w", tag, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("GitHub releases API returned %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("GitHub release tag %q returned %d: %s", tag, resp.StatusCode, string(body))
 	}
 
 	var release githubReleaseResponse
