@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -81,6 +82,15 @@ func loginWithWeb(hostname string) (string, error) {
 		_, err := reader.ReadString('\n')
 		if err == nil {
 			// User pressed Enter, open browser
+			oldStdout := browser.Stdout
+			oldStderr := browser.Stderr
+			browser.Stdout = io.Discard
+			browser.Stderr = io.Discard
+			defer func() {
+				browser.Stdout = oldStdout
+				browser.Stderr = oldStderr
+			}()
+
 			if err := browser.OpenURL(loginURL); err != nil {
 				// Don't fail if browser can't be opened, just warn
 				logger.Warning("Failed to open browser automatically")
@@ -328,11 +338,11 @@ func loginMain(cmd *cobra.Command, opts *LoginCmdOpts) error {
 	} else if apiServerInfo != nil {
 		// Convert api.ServerInfo to config.ServerInfo
 		serverInfo := &config.ServerInfo{
-			Version:                  apiServerInfo.Version,
-			SupporterStatusValid:     apiServerInfo.SupporterStatusValid,
-			Build:                    apiServerInfo.Build,
-			EnterpriseLicenseValid:   apiServerInfo.EnterpriseLicenseValid,
-			EnterpriseLicenseType:    apiServerInfo.EnterpriseLicenseType,
+			Version:                apiServerInfo.Version,
+			SupporterStatusValid:   apiServerInfo.SupporterStatusValid,
+			Build:                  apiServerInfo.Build,
+			EnterpriseLicenseValid: apiServerInfo.EnterpriseLicenseValid,
+			EnterpriseLicenseType:  apiServerInfo.EnterpriseLicenseType,
 		}
 		// Update account with server info
 		account := accountStore.Accounts[user.UserID]
