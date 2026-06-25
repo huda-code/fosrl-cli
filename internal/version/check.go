@@ -9,15 +9,12 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/fosrl/cli/internal/logger"
 )
 
 const (
-	// GitHubRepoOwner is the GitHub repository owner
-	GitHubRepoOwner = "fosrl"
-	// GitHubRepoName is the GitHub repository name
-	GitHubRepoName = "cli"
-	// GitHubAPIBaseURL is the base URL for GitHub API
-	GitHubAPIBaseURL = "https://api.github.com"
+	// VersionsAPIURL is the Fossorial versions endpoint.
+	VersionsAPIURL = "https://api.fossorial.io/api/v1/versions"
 )
 
 // GitHubRelease represents a GitHub release
@@ -27,20 +24,30 @@ type GitHubRelease struct {
 	URL     string `json:"html_url"`
 }
 
-// GetLatestRelease fetches the latest release from GitHub
+type versionsAPIResponse struct {
+	Data struct {
+		CLI struct {
+			LatestVersion string `json:"latestVersion"`
+			ReleaseNotes  string `json:"releaseNotes"`
+		} `json:"cli"`
+	} `json:"data"`
+	Success bool `json:"success"`
+}
+
+// GetLatestRelease fetches the latest CLI release from the Fossorial versions API.
 func GetLatestRelease() (*GitHubRelease, error) {
-	url := fmt.Sprintf("%s/repos/%s/%s/releases/latest", GitHubAPIBaseURL, GitHubRepoOwner, GitHubRepoName)
+	logger.Debug("Checking latest CLI version from %s", VersionsAPIURL)
 
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", VersionsAPIURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "pangolin-cli")
 
 	resp, err := client.Do(req)
@@ -59,10 +66,26 @@ func GetLatestRelease() (*GitHubRelease, error) {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	var release GitHubRelease
-	if err := json.Unmarshal(body, &release); err != nil {
+	var apiResp versionsAPIResponse
+	if err := json.Unmarshal(body, &apiResp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
+
+	if !apiResp.Success {
+		return nil, fmt.Errorf("versions API returned unsuccessful response")
+	}
+
+	if apiResp.Data.CLI.LatestVersion == "" {
+		return nil, fmt.Errorf("versions API response missing cli.latestVersion")
+	}
+
+	release := GitHubRelease{
+		TagName: apiResp.Data.CLI.LatestVersion,
+		Name:    apiResp.Data.CLI.LatestVersion,
+		URL:     apiResp.Data.CLI.ReleaseNotes,
+	}
+
+	logger.Debug("Versions API latest cli version: %s", release.TagName)
 
 	return &release, nil
 }
@@ -100,13 +123,17 @@ func CompareVersions(current, latest string) (int, error) {
 func CheckForUpdate() (*GitHubRelease, error) {
 	latest, err := GetLatestRelease()
 	if err != nil {
+		logger.Debug("Update check failed while fetching latest version: %v", err)
 		return nil, err
 	}
 
 	comparison, err := CompareVersions(Version, latest.TagName)
 	if err != nil {
+		logger.Debug("Update check failed during version comparison current=%s latest=%s err=%v", Version, latest.TagName, err)
 		return nil, err
 	}
+
+	logger.Debug("Version comparison current=%s latest=%s result=%d", Version, latest.TagName, comparison)
 
 	// If current version is less than latest, update is available
 	if comparison < 0 {
@@ -139,6 +166,7 @@ func CheckForUpdateAsync(showMessage func(*GitHubRelease)) {
 		latest, err := CheckForUpdate()
 		if err != nil {
 			// Silently fail - don't show errors for update checks
+			logger.Debug("Background update check failed: %v", err)
 			done <- nil
 			return
 		}
@@ -158,5 +186,6 @@ func CheckForUpdateAsync(showMessage func(*GitHubRelease)) {
 	case <-time.After(1000 * time.Millisecond):
 		// Timeout - continue without showing message (check continues in background)
 		// This ensures fast commands don't get blocked
+		logger.Debug("Update check timed out after 1000ms; continuing without blocking")
 	}
 }

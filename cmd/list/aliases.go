@@ -28,7 +28,7 @@ func aliasesCmd() *cobra.Command {
 			for page := 1; ; page++ {
 				data, err := apiClient.ListUserResourceAliases(orgID, page, aliasesPageSize)
 				if err != nil {
-					return fmt.Errorf("list user resource aliases: %w", err)
+					return err
 				}
 				for _, a := range data.Aliases {
 					fmt.Println(a)
