@@ -33,7 +33,7 @@ func getDeviceName() string {
 	return hostname
 }
 
-func loginWithWeb(hostname string) (string, error) {
+func loginWithWeb(hostname string, plain bool) (string, error) {
 	// Build base URL for login (use hostname as-is, StartDeviceWebAuth will add /api/v1)
 	baseURL := hostname
 
@@ -72,10 +72,16 @@ func loginWithWeb(hostname string) (string, error) {
 	loginURL := fmt.Sprintf("%s?code=%s", baseLoginURL, code)
 
 	// Display code and instructions (similar to GH CLI format)
+if plain {
+	logger.Info("DEVICE_CODE=%s", code)
+	logger.Info("DEVICE_LOGIN_URL=%s", loginURL)
+} else {
 	logger.Info("First copy your one-time code: %s", code)
 	logger.Info("Press Enter to open %s in your browser...", baseLoginURL)
+}
 
 	// Wait for Enter in a goroutine (non-blocking) and open browser when pressed
+if !plain {
 	go func() {
 		reader := bufio.NewReader(os.Stdin)
 		_, err := reader.ReadString('\n')
@@ -88,6 +94,7 @@ func loginWithWeb(hostname string) (string, error) {
 			}
 		}
 	}()
+}
 
 	// Poll for verification (starts immediately, doesn't wait for Enter)
 	pollInterval := 1 * time.Second
@@ -143,6 +150,7 @@ func loginWithWeb(hostname string) (string, error) {
 
 type LoginCmdOpts struct {
 	Hostname string
+	Plain    bool
 }
 
 func LoginCmd() *cobra.Command {
@@ -170,6 +178,8 @@ func LoginCmd() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().BoolVar(&opts.Plain, "plain", false, "Use plain-text login output and do not open a browser")
+	
 	return cmd
 }
 
@@ -231,7 +241,7 @@ func loginMain(cmd *cobra.Command, opts *LoginCmdOpts) error {
 	}
 
 	// Perform web login
-	sessionToken, err := loginWithWeb(hostname)
+	sessionToken, err := loginWithWeb(hostname, opts.Plain)
 	if err != nil {
 		logger.Error("%v", err)
 		return err
