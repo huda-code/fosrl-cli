@@ -34,6 +34,21 @@ func getDeviceName() string {
 	return hostname
 }
 
+func openBrowserQuietly(url string) error {
+	stdout := browser.Stdout
+	stderr := browser.Stderr
+
+	browser.Stdout = io.Discard
+	browser.Stderr = io.Discard
+
+	defer func() {
+		browser.Stdout = stdout
+		browser.Stderr = stderr
+	}()
+
+	return browser.OpenURL(url)
+}
+
 func loginWithWeb(hostname string) (string, error) {
 	// Build base URL for login (use hostname as-is, StartDeviceWebAuth will add /api/v1)
 	baseURL := hostname
@@ -91,7 +106,7 @@ func loginWithWeb(hostname string) (string, error) {
 				browser.Stderr = oldStderr
 			}()
 
-			if err := browser.OpenURL(loginURL); err != nil {
+			if err := openBrowserQuietly(loginURL); err != nil {
 				// Don't fail if browser can't be opened, just warn
 				logger.Warning("Failed to open browser automatically")
 				logger.Info("Please manually visit: %s", baseLoginURL)
