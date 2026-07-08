@@ -29,7 +29,6 @@ import (
 )
 
 const (
-	defaultDNSServer  = "1.1.1.1"
 	defaultEnableAPI  = true
 	defaultSocketPath = "/var/run/olm.sock"
 	defaultAgent      = olm.AgentName
@@ -61,7 +60,7 @@ type ClientUpCmdOpts struct {
 func validateDNSIP(s, field string) error {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return fmt.Errorf("%s: DNS server cannot be empty", field)
+		return nil
 	}
 	host := s
 	if strings.Contains(s, ":") {
@@ -120,7 +119,7 @@ func ClientUpCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.OrgID, "org", "", "Organization ID (default: selected organization if logged in)")
 	cmd.Flags().StringVar(&opts.Endpoint, "endpoint", "", "Client endpoint (required if not logged in)")
 	cmd.Flags().IntVar(&opts.MTU, "mtu", 1280, "Maximum transmission unit")
-	cmd.Flags().StringVar(&opts.DNS, "netstack-dns", defaultDNSServer, "DNS `server` to use for Netstack. This handles DNS resolution outside of the upstream servers.")
+	cmd.Flags().StringVar(&opts.DNS, "netstack-dns", "", "DNS `server` to use for Netstack. This handles DNS resolution outside of the upstream servers.")
 	cmd.Flags().StringVar(&opts.InterfaceName, "interface-name", "pangolin", "Interface `name`")
 	cmd.Flags().StringVar(&opts.LogLevel, "log-level", "info", "Log level")
 	cmd.Flags().StringVar(&opts.HTTPAddr, "http-addr", "", "HTTP address for API server")
@@ -130,7 +129,7 @@ func ClientUpCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.TlsClientCert, "tls-client-cert", "", "TLS client certificate `path`")
 	cmd.Flags().BoolVar(&opts.OverrideDNS, "override-dns", true, "When enabled, the client uses custom DNS servers to resolve internal resources and aliases. This overrides your system's default DNS settings. Queries that cannot be resolved as a Pangolin resource will be forwarded to your configured Upstream DNS Server.")
 	cmd.Flags().BoolVar(&opts.TunnelDNS, "tunnel-dns", false, "When enabled, DNS queries are routed through the tunnel for remote resolution. To ensure queries are tunneled correctly, you must define the DNS server as a Pangolin resource and enter its address as an Upstream DNS Server.")
-	cmd.Flags().StringSliceVar(&opts.UpstreamDNS, "upstream-dns", []string{defaultDNSServer}, "List of DNS servers to use for external DNS resolution if overriding system DNS")
+	cmd.Flags().StringSliceVar(&opts.UpstreamDNS, "upstream-dns", []string{}, "List of DNS servers to use for external DNS resolution if overriding system DNS")
 	cmd.Flags().BoolVar(&opts.Attached, "attach", false, "Run in attached (foreground) mode, (default: detached (background) mode)")
 	cmd.Flags().BoolVar(&opts.Silent, "silent", false, "Disable TUI and run silently when detached")
 
@@ -494,12 +493,6 @@ func clientUpMain(cmd *cobra.Command, opts *ClientUpCmdOpts, extraArgs []string)
 		}
 
 		upstreamDNS = append(upstreamDNS, server)
-	}
-
-	// If no DNS servers were provided, force using
-	// the default server again.
-	if len(upstreamDNS) == 0 {
-		upstreamDNS = []string{fmt.Sprintf("%s:53", defaultDNSServer)}
 	}
 
 	// Setup log file if specified
